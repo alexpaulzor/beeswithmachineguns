@@ -74,6 +74,10 @@ commands:
     up_group.add_option('-l', '--login',  metavar="LOGIN",  nargs=1,
                         action='store', dest='login', type='string', default='newsapps',
                         help="The ssh username name to use to connect to the new servers (default: newsapps).")
+    
+    up_group.add_option('-f', '--file',  metavar="STATE_FILE",  nargs=1,
+                        action='store', dest='statefile', type='string', default='~/.bees',
+                        help="The state file to use (default: ~/.bees). Note that if you use this option, you have to set it for attack, down, and report.")
 
     parser.add_option_group(up_group)
 
@@ -91,7 +95,7 @@ commands:
     attack_group.add_option('-c', '--concurrent', metavar="CONCURRENT", nargs=1,
                         action='store', dest='concurrent', type='int', default=100,
                         help="The number of concurrent connections to make to the target (default: 100).")
-
+    
     parser.add_option_group(attack_group)
 
     (options, args) = parser.parse_args()
@@ -108,7 +112,7 @@ commands:
         if options.group == 'default':
             print 'New bees will use the "default" EC2 security group. Please note that port 22 (SSH) is not normally open on this group. You will need to use to the EC2 tools to open it before you will be able to attack.'
 
-        bees.up(options.servers, options.group, options.zone, options.instance, options.login, options.key)
+        bees.up(options.servers, options.group, options.zone, options.instance, options.login, options.key, options.statefile)
     elif command == 'attack':
         if not options.url:
             parser.error('To run an attack you need to specify a url with -u')
@@ -116,11 +120,11 @@ commands:
         if NO_TRAILING_SLASH_REGEX.match(options.url):
             parser.error('It appears your URL lacks a trailing slash, this will disorient the bees. Please try again with a trailing slash.')
 
-        bees.attack(options.url, options.number, options.concurrent)
+        bees.attack(options.url, options.number, options.concurrent, options.statefile)
     elif command == 'down':
-        bees.down()
+        bees.down(options.statefile)
     elif command == 'report':
-        bees.report()
+        bees.report(options.statefile)
 
 
 def main():

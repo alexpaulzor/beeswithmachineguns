@@ -40,13 +40,13 @@ STATE_FILENAME = os.path.expanduser('~/.bees')
 
 # Utilities
 
-def _read_server_list():
+def _read_server_list(state_file):
     instance_ids = []
 
-    if not os.path.isfile(STATE_FILENAME):
+    if not os.path.isfile(state_file):
         return (None, None, None)
 
-    with open(STATE_FILENAME, 'r') as f:
+    with open(state_file, 'r') as f:
         username = f.readline().strip()
         key_name = f.readline().strip()
         text = f.read()
@@ -56,25 +56,25 @@ def _read_server_list():
 
     return (username, key_name, instance_ids)
 
-def _write_server_list(username, key_name, instances):
-    with open(STATE_FILENAME, 'w') as f:
+def _write_server_list(username, key_name, instances, state_file):
+    with open(state_file, 'w') as f:
         f.write('%s\n' % username)
         f.write('%s\n' % key_name)
         f.write('\n'.join([instance.id for instance in instances]))
 
-def _delete_server_list():
-    os.remove(STATE_FILENAME)
+def _delete_server_list(state_file):
+    os.remove(state_file)
 
 def _get_pem_path(key):
     return os.path.expanduser('~/.ssh/%s.pem' % key)
 
 # Methods
 
-def up(count, group, zone, image_id, username, key_name):
+def up(count, group, zone, image_id, username, key_name, state_file = STATE_FILENAME):
     """
     Startup the load testing server.
     """
-    existing_username, existing_key_name, instance_ids = _read_server_list()
+    existing_username, existing_key_name, instance_ids = _read_server_list(state_file)
 
     if instance_ids:
         print 'Bees are already assembled and awaiting orders.'
@@ -108,6 +108,7 @@ def up(count, group, zone, image_id, username, key_name):
     instance_ids = []
 
     for instance in reservation.instances:
+        instance.update()
         while instance.state != 'running':
             print '.'
             time.sleep(5)
@@ -119,15 +120,15 @@ def up(count, group, zone, image_id, username, key_name):
 
     ec2_connection.create_tags(instance_ids, { "Name": "a bee!" })
 
-    _write_server_list(username, key_name, reservation.instances)
+    _write_server_list(username, key_name, reservation.instances, state_file)
 
     print 'The swarm has assembled %i bees.' % len(reservation.instances)
 
-def report():
+def report(state_file = STATE_FILENAME):
     """
     Report the status of the load testing servers.
     """
-    username, key_name, instance_ids = _read_server_list()
+    username, key_name, instance_ids = _read_server_list(state_file)
 
     if not instance_ids:
         print 'No bees have been mobilized.'
@@ -145,11 +146,11 @@ def report():
     for instance in instances:
         print 'Bee %s: %s @ %s' % (instance.id, instance.state, instance.ip_address)
 
-def down():
+def down(state_file = STATE_FILENAME):
     """
     Shutdown the load testing server.
     """
-    username, key_name, instance_ids = _read_server_list()
+    username, key_name, instance_ids = _read_server_list(state_file)
 
     if not instance_ids:
         print 'No bees have been mobilized.'
@@ -166,7 +167,7 @@ def down():
 
     print 'Stood down %i bees.' % len(terminated_instance_ids)
 
-    _delete_server_list()
+    _delete_server_list(state_file)
 
 def _attack(params):
     """
@@ -270,11 +271,11 @@ def _print_results(results):
     else:
         print 'Mission Assessment: Swarm annihilated target.'
     
-def attack(url, n, c):
+def attack(url, n, c, state_file = STATE_FILENAME):
     """
     Test the root url of this site.
     """
-    username, key_name, instance_ids = _read_server_list()
+    username, key_name, instance_ids = _read_server_list(state_file)
 
     if not instance_ids:
         print 'No bees are ready to attack.'
