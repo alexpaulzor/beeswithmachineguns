@@ -175,7 +175,7 @@ def _attack(params):
 
     Intended for use with multiprocessing.
     """
-    print 'Bee %i is joining the swarm.' % params['i']
+    #print 'Bee %i is joining the swarm.' % params['i']
 
     try:
         client = paramiko.SSHClient()
@@ -185,7 +185,7 @@ def _attack(params):
             username=params['username'],
             key_filename=_get_pem_path(params['key_name']))
 
-        print 'Bee %i is firing his machine gun. Bang bang!' % params['i']
+        #print 'Bee %i is firing his machine gun. Bang bang!' % params['i']
 
         stdin, stdout, stderr = client.exec_command('ab -r -n %(num_requests)s -c %(concurrent_requests)s -C "sessionid=NotARealSessionID" %(url)s' % params)
 
@@ -330,3 +330,85 @@ def attack(url, n, c, state_file = STATE_FILENAME):
     _print_results(results)
 
     print 'The swarm is awaiting new orders.'
+
+def shell(command, state_file = STATE_FILENAME):
+    """
+    Execute a shell command on each bee
+    """
+    username, key_name, instance_ids = _read_server_list(state_file)
+
+    if not instance_ids:
+        print 'No bees are ready to attack.'
+        return
+
+    print 'Connecting to the hive.'
+
+    ec2_connection = boto.connect_ec2()
+
+    print 'Assembling bees.'
+
+    reservations = ec2_connection.get_all_instances(instance_ids=instance_ids)
+
+    instances = []
+
+    for reservation in reservations:
+        instances.extend(reservation.instances)
+
+    params = []
+
+    for i, instance in enumerate(instances):
+        params.append({
+            'i': i,
+            'instance_id': instance.id,
+            'instance_name': instance.public_dns_name,
+            'command': command,
+            'username': username,
+            'key_name': key_name,
+        })
+
+    print 'Organizing the swarm.'
+
+    # Spin up processes for connecting to EC2 instances
+    pool = Pool(len(params))
+    results = pool.map(_shell, params)
+    
+    timeout_bees = [r for r in results if r is not True]
+    exception_bees = [r for r in results if type(r) == socket.error]
+
+    print "No response from %d bees / error from %d bees" % (len(timeout_bees), len(exception_bees))
+
+    print 'Offensive complete.'
+
+def _shell(params):
+    """
+    Excecute a shell command on a bee.
+
+    Intended for use with multiprocessing.
+    """
+
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            params['instance_name'],
+            username=params['username'],
+            key_filename=_get_pem_path(params['key_name']))
+
+        stdin, stdout, stderr = client.exec_command(params['command'])
+
+        response = {}
+
+        results_err = stderr.read()
+        for line in results_err.split("\n"):
+            if len(line) > 0:
+                print "[%s::err] %s" % (params['instance_id'], line)
+        results = stdout.read()
+        for line in results.split("\n"):
+            if len(line) > 0:
+                print "[%s::out] %s" % (params['instance_id'], line)
+
+        client.close()
+
+        return True
+    except socket.error, e:
+        return e

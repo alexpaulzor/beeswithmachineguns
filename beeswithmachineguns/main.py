@@ -49,7 +49,16 @@ commands:
   attack  Begin the attack on a specific url.
   down    Shutdown and deactivate the load testing servers.
   report  Report the status of the load testing servers.
+  shell   Run a command on each bee.
     """)
+    
+    general_group = OptionGroup(parser, "general", """General options for all commands""")
+    
+    general_group.add_option('-f', '--file',  metavar="STATE_FILE",  nargs=1,
+                        action='store', dest='statefile', type='string', default=bees.STATE_FILENAME,
+                        help="The state file to use (default: ~/.bees). Note that if you use this option, you have to set it for attack, down, and report.")
+
+    parser.add_option_group(general_group)
 
     up_group = OptionGroup(parser, "up", 
         """In order to spin up new servers you will need to specify at least the -k command, which is the name of the EC2 keypair to use for creating and connecting to the new servers. The bees will expect to find a .pem file with this name in ~/.ssh/.""")
@@ -75,10 +84,6 @@ commands:
                         action='store', dest='login', type='string', default='newsapps',
                         help="The ssh username name to use to connect to the new servers (default: newsapps).")
     
-    up_group.add_option('-f', '--file',  metavar="STATE_FILE",  nargs=1,
-                        action='store', dest='statefile', type='string', default='~/.bees',
-                        help="The state file to use (default: ~/.bees). Note that if you use this option, you have to set it for attack, down, and report.")
-
     parser.add_option_group(up_group)
 
     attack_group = OptionGroup(parser, "attack", 
@@ -97,6 +102,14 @@ commands:
                         help="The number of concurrent connections to make to the target (default: 100).")
     
     parser.add_option_group(attack_group)
+    
+    shell_group = OptionGroup(parser, "shell", """Run a command on each bee""")
+    
+    shell_group.add_option('-e', '--execute',  metavar="COMMAND",  nargs=1,
+                        action='store', dest='command', type='string',
+                        help="The command to run")
+
+    parser.add_option_group(shell_group)
 
     (options, args) = parser.parse_args()
 
@@ -125,6 +138,11 @@ commands:
         bees.down(options.statefile)
     elif command == 'report':
         bees.report(options.statefile)
+    elif command == 'shell':
+        if not options.command:
+            parser.error('You must specify a shell command with -e')
+        
+        bees.shell(options.command, options.statefile)
 
 
 def main():
