@@ -37,6 +37,7 @@ import paramiko
 
 EC2_INSTANCE_TYPE = 't1.micro'
 STATE_FILENAME = os.path.expanduser('~/.bees')
+WAIT_COUNT = 60
 
 # Utilities
 
@@ -56,11 +57,11 @@ def _read_server_list(state_file):
 
     return (username, key_name, instance_ids)
 
-def _write_server_list(username, key_name, instances, state_file):
+def _write_server_list(username, key_name, instances, state_file, instance_ids):
     with open(state_file, 'w') as f:
         f.write('%s\n' % username)
         f.write('%s\n' % key_name)
-        f.write('\n'.join([instance.id for instance in instances]))
+        f.write('\n'.join([instance.id for instance in instances if instance.id in instance_ids]))
 
 def _delete_server_list(state_file):
     os.remove(state_file)
@@ -107,22 +108,26 @@ def up(count, group, zone, image_id, username, key_name, state_file = STATE_FILE
 
     instance_ids = []
 
+    waitcount = 0
     for instance in reservation.instances:
         instance.update()
-        while instance.state != 'running':
+        while instance.state != 'running' and waitcount < WAIT_COUNT:
             print '.'
             time.sleep(5)
             instance.update()
+            waitcount = waitcount + 1
 
-        instance_ids.append(instance.id)
-
-        print 'Bee %s is ready for the attack.' % instance.id
+        if instance.state == 'running':
+            instance_ids.append(instance.id)
+            print 'Bee %s is ready for the attack.' % instance.id
+        else:
+            print 'Bee %s seems to be lost!' % instance.id
 
     ec2_connection.create_tags(instance_ids, { "Name": "a bee!" })
 
-    _write_server_list(username, key_name, reservation.instances, state_file)
+    _write_server_list(username, key_name, reservation.instances, state_file, instance_ids)
 
-    print 'The swarm has assembled %i bees.' % len(reservation.instances)
+    print 'The swarm has assembled %i bees.' % len(instance_ids)
 
 def report(state_file = STATE_FILENAME):
     """
@@ -187,7 +192,7 @@ def _attack(params):
 
         #print 'Bee %i is firing his machine gun. Bang bang!' % params['i']
 
-        stdin, stdout, stderr = client.exec_command('ab -r -n %(num_requests)s -c %(concurrent_requests)s -C "sessionid=NotARealSessionID" %(url)s' % params)
+        stdin, stdout, stderr = client.exec_command('ab -r -n %(num_requests)s -c %(concurrent_requests)s -C "sessionid=NotARealSessionID" "%(url)s"' % params)
 
         response = {}
 
@@ -209,7 +214,7 @@ def _attack(params):
         response['ninety_percent'] = float(ninety_percent_search.group(1))
         response['complete_requests'] = float(complete_requests_search.group(1))
 
-        print 'Bee %i is out of ammo.' % params['i']
+        #print 'Bee %i is out of ammo.' % params['i']
 
         client.close()
 
